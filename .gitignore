@@ -6,3 +6,7 @@ samples_storage/
 SDDAL_InShaPe_random/
 training_curve_random/
 statistics_sddal_single.py
+!requirements.txt
+!SDDAL_InShaPe_cl/Design_rec/
+!SDDAL_InShaPe_randinit_syncUNet_ReparamCKL/Design_rec/
+
