@@ -1,187 +1,130 @@
 import os
-import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 # =========================================================
 # 0) Configuration
 # =========================================================
-beamshape = 'rec'
-seeds     = [1, 2, 3, 4, 5, 6]
-
 AXIS_LABEL_FONT_SIZE = 18
 TITLE_FONT_SIZE      = 20
 LEGEND_FONT_SIZE     = 15
 TICK_FONT_SIZE       = 14
+ANNOT_FONT_SIZE      = 12
 
-SEED_MARKERS = ["o", "s", "^", "D", "v"]
-
-# =========================================================
-# 1) Path settings
-# =========================================================
-base_dir     = os.path.dirname(os.path.abspath(__file__))
-baseline_dir = os.path.join(base_dir, "SDDAL_InShaPe_cl")
-cl_dir       = os.path.join(base_dir, "SDDAL_InShaPe_cl")   # update when CL variant exists
-
-# Experiment folder name pattern inside each dir
-def exp_folder(parent_dir, seed, suffix=""):
-    return os.path.join(parent_dir, f"Design_{beamshape}_{seed}{suffix}")
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # =========================================================
-# 2) Load timing_log.csv for each strategy / seed
-#    Returns dict: seed -> DataFrame (columns: dataset_size,
-#    cumul_trainer_s, per_round_trainer_s)
-#    Missing files are skipped with a warning.
+# 1) Strategy config
+#    (key, csv_filename, color, label)
+#    Comment out any line to drop that method from all plots.
 # =========================================================
-def load_timing(parent_dir, label, suffix=""):
-    data = {}
-    for seed in seeds:
-        csv_path = os.path.join(exp_folder(parent_dir, seed, suffix), "timing_log.csv")
-        if not os.path.isfile(csv_path):
-            print(f"[SKIP] {label} seed={seed}: timing_log.csv not found at {csv_path}")
-            continue
-        df = pd.read_csv(csv_path)
-        required = {"dataset_size", "cumul_trainer_s", "per_round_trainer_s"}
-        if not required.issubset(df.columns):
-            print(f"[SKIP] {label} seed={seed}: missing columns in {csv_path}")
-            continue
-        data[seed] = df
-        print(f"  Loaded {label} seed={seed}: {len(df)} rounds")
-    return data
-
-print("=" * 60)
-print("Loading timing logs...")
-print("=" * 60)
-baseline_data = load_timing(baseline_dir, "baseline", suffix="")
-cl_data       = load_timing(cl_dir,       "CL",       suffix="_cl")
+STRATEGIES = [
+    ("sddal",           "sddal.csv",          "green",     "SDDAL"),
+    ("sddal_cl_replay", "sddal_cl_replay.csv", "steelblue", "SDDAL-CL (replay)"),
+    # ("sddal_cl",      "sddal_cl.csv",        "orange",    "SDDAL-CL"),
+]
 
 # =========================================================
-# 3) Helpers
+# 2) Load CSVs
 # =========================================================
-def interp_to_common_x(data_dict, metric_col):
-    """
-    Interpolate each seed's curve onto a common dataset_size grid
-    so we can average across seeds cleanly.
-    Returns (x_common, matrix) where matrix rows = seeds.
-    """
-    all_x = sorted(set(
-        x for df in data_dict.values() for x in df["dataset_size"].tolist()
-    ))
-    if len(all_x) == 0:
-        return np.array([]), np.full((0, 0), np.nan)
+base_dir = os.path.dirname(os.path.abspath(__file__))
+time_dir = os.path.join(base_dir, "time")
 
-    x_common = np.array(all_x, dtype=float)
-    rows = []
-    for df in data_dict.values():
-        x = df["dataset_size"].values.astype(float)
-        y = df[metric_col].values.astype(float)
-        y_interp = np.interp(x_common, x, y,
-                             left=np.nan, right=np.nan)
-        rows.append(y_interp)
-    return x_common, np.array(rows)
-
-
-def safe_mean_std(matrix):
-    """Column-wise mean and std ignoring NaN."""
-    with np.errstate(all='ignore'):
-        mean = np.nanmean(matrix, axis=0)
-        std  = np.nanstd(matrix,  axis=0)
-    return mean, std
+data = {}
+for key, filename, color, label in STRATEGIES:
+    csv_path = os.path.join(time_dir, filename)
+    if not os.path.isfile(csv_path):
+        print(f"[SKIP] {label}: file not found at {csv_path}")
+        continue
+    df = pd.read_csv(csv_path)
+    required = {"dataset_size", "cumul_trainer_s", "per_round_trainer_s"}
+    if not required.issubset(df.columns):
+        print(f"[SKIP] {label}: missing columns in {csv_path} (need {required})")
+        continue
+    data[key] = df
+    print(f"Loaded {label}: {len(df)} rounds")
 
 # =========================================================
-# 4) Plot helpers
+# 3) Plot 1 — cumulative trainer time
+#    Annotation: final value in hours (2 decimal) at end of line
 # =========================================================
-def plot_all_seeds(ax, data_dict, metric_col, color, label_prefix):
-    seed_list = list(data_dict.keys())
-    for i, seed in enumerate(seed_list):
-        df  = data_dict[seed]
-        x   = df["dataset_size"].values
-        y   = df[metric_col].values
-        ax.plot(
-            x, y,
-            marker=SEED_MARKERS[i % len(SEED_MARKERS)],
-            markersize=5,
-            linewidth=1.8,
-            color=color,
-            alpha=0.55,
-            label=f"{label_prefix} seed={seed}",
-        )
+fig, ax = plt.subplots(figsize=(10, 6))
 
+for key, _, color, label in STRATEGIES:
+    if key not in data:
+        continue
+    df = data[key]
+    x = df["dataset_size"].values
+    y = df["cumul_trainer_s"].values
 
-def plot_mean(ax, data_dict, metric_col, color, label):
-    if not data_dict:
-        return
-    x_common, matrix = interp_to_common_x(data_dict, metric_col)
-    if x_common.size == 0:
-        return
-    mean, _ = safe_mean_std(matrix)
-    valid = np.isfinite(mean)
-    ax.plot(
-        x_common[valid], mean[valid],
-        marker="o",
-        markersize=6,
-        linewidth=2.5,
-        color=color,
-        alpha=0.95,
-        label=label,
+    ax.plot(x, y, marker="o", markersize=5, linewidth=2.2,
+            color=color, alpha=0.9, label=label)
+
+    # Annotate final value in hours at the end of the line
+    x_end, y_end = x[-1], y[-1]
+    ax.annotate(
+        f"{y_end / 3600:.2f}h",
+        xy=(x_end, y_end),
+        xytext=(6, 0), textcoords="offset points",
+        fontsize=ANNOT_FONT_SIZE, color=color,
+        va="center",
     )
 
-
-def finalise(ax, title, ylabel, save_path):
-    ax.set_xlabel("Dataset size (# training samples)", fontsize=AXIS_LABEL_FONT_SIZE)
-    ax.set_ylabel(ylabel, fontsize=AXIS_LABEL_FONT_SIZE)
-    ax.set_title(title, fontsize=TITLE_FONT_SIZE)
-    ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=LEGEND_FONT_SIZE)
-    ax.tick_params(axis='both', labelsize=TICK_FONT_SIZE)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {save_path}")
+ax.set_xlabel("Dataset size (# training samples)", fontsize=AXIS_LABEL_FONT_SIZE)
+ax.set_ylabel("Cumulative trainer time (s)", fontsize=AXIS_LABEL_FONT_SIZE)
+ax.set_title("Cumulative trainer time", fontsize=TITLE_FONT_SIZE)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=LEGEND_FONT_SIZE)
+ax.tick_params(axis='both', labelsize=TICK_FONT_SIZE)
+plt.tight_layout()
+save_path = os.path.join(base_dir, f"time_cumul_trainer_{TIMESTAMP}.png")
+plt.savefig(save_path, dpi=300, bbox_inches="tight")
+plt.close()
+print(f"Saved: {save_path}")
 
 # =========================================================
-# 5) Graph 1 — cumul_trainer_s, all individual seeds
+# 4) Plot 2 — per-round trainer time
+#    + horizontal dashed line at mean, annotated in seconds (0 decimal)
 # =========================================================
 fig, ax = plt.subplots(figsize=(10, 6))
-plot_all_seeds(ax, baseline_data, "cumul_trainer_s", color="green",  label_prefix="baseline")
-plot_all_seeds(ax, cl_data,       "cumul_trainer_s", color="steelblue", label_prefix="CL")
-finalise(ax,
-         title="Cumulative trainer time — all seeds",
-         ylabel="Cumulative trainer time (s)",
-         save_path=os.path.join(base_dir, "time_all_seeds_cumul_trainer.png"))
 
-# =========================================================
-# 6) Graph 2 — cumul_trainer_s, mean only
-# =========================================================
-fig, ax = plt.subplots(figsize=(10, 6))
-plot_mean(ax, baseline_data, "cumul_trainer_s", color="green",     label="baseline mean")
-plot_mean(ax, cl_data,       "cumul_trainer_s", color="steelblue", label="CL mean")
-finalise(ax,
-         title="Cumulative trainer time — mean",
-         ylabel="Cumulative trainer time (s)",
-         save_path=os.path.join(base_dir, "time_mean_cumul_trainer.png"))
+for key, _, color, label in STRATEGIES:
+    if key not in data:
+        continue
+    df = data[key]
+    x = df["dataset_size"].values
+    y = df["per_round_trainer_s"].values
+    mean_s = float(np.mean(y))
 
-# =========================================================
-# 7) Graph 3 — per_round_trainer_s, all individual seeds
-# =========================================================
-fig, ax = plt.subplots(figsize=(10, 6))
-plot_all_seeds(ax, baseline_data, "per_round_trainer_s", color="green",     label_prefix="baseline")
-plot_all_seeds(ax, cl_data,       "per_round_trainer_s", color="steelblue", label_prefix="CL")
-finalise(ax,
-         title="Per-round trainer time — all seeds",
-         ylabel="Trainer time per round (s)",
-         save_path=os.path.join(base_dir, "time_all_seeds_per_trainer.png"))
+    # Individual line
+    ax.plot(x, y, marker="o", markersize=5, linewidth=2.2,
+            color=color, alpha=0.9, label=label)
 
-# =========================================================
-# 8) Graph 4 — per_round_trainer_s, mean only
-# =========================================================
-fig, ax = plt.subplots(figsize=(10, 6))
-plot_mean(ax, baseline_data, "per_round_trainer_s", color="green",     label="baseline mean")
-plot_mean(ax, cl_data,       "per_round_trainer_s", color="steelblue", label="CL mean")
-finalise(ax,
-         title="Per-round trainer time — mean",
-         ylabel="Trainer time per round (s)",
-         save_path=os.path.join(base_dir, "time_mean_per_trainer.png"))
+    # Mean dashed line
+    ax.hlines(mean_s, x[0], x[-1],
+              colors=color, linestyles="--", linewidth=1.8)
+
+    # Annotate mean at the right end of the dashed line
+    ax.annotate(
+        f"mean: {mean_s:.0f}s",
+        xy=(x[-1], mean_s),
+        xytext=(6, 0), textcoords="offset points",
+        fontsize=ANNOT_FONT_SIZE, color=color,
+        va="center",
+    )
+
+ax.set_xlabel("Dataset size (# training samples)", fontsize=AXIS_LABEL_FONT_SIZE)
+ax.set_ylabel("Trainer time per round (s)", fontsize=AXIS_LABEL_FONT_SIZE)
+ax.set_title("Per-round trainer time", fontsize=TITLE_FONT_SIZE)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=LEGEND_FONT_SIZE)
+ax.tick_params(axis='both', labelsize=TICK_FONT_SIZE)
+plt.tight_layout()
+save_path = os.path.join(base_dir, f"time_per_round_trainer_{TIMESTAMP}.png")
+plt.savefig(save_path, dpi=300, bbox_inches="tight")
+plt.close()
+print(f"Saved: {save_path}")
 
 print("\nAll timing figures generated.")
