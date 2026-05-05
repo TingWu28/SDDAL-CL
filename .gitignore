@@ -1,0 +1,8 @@
+*.png
+*.npy
+samples_storage/
+*.txt
+*rec_*/
+SDDAL_InShaPe_random/
+training_curve_random/
+statistics_sddal_single.py
