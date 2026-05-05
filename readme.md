@@ -6,7 +6,7 @@ This repository contains the implementation of SDDAL-CL, a continual learning ex
 
 The original SDDAL framework — including the differentiable simulation pipeline, QuantUNetT scanner architecture, MMD diversity loss, and active query strategy — was developed by **Shengyuan Yan** ([@yanshengyuan](https://github.com/yanshengyuan)).
 
-This repository extends Shengyuan's work by integrating **continual learning** (experience replay) into the SDDAL scanner training loop, replacing the round-by-round cold-start retraining with an incremental warm-start approach. The evaluation pipeline, analysis scripts, and CL-specific orchestration scripts are the contributions of this thesis work.
+This repository extends Shengyuan's work by integrating **continual learning** (experience replay) into the SDDAL scanner training loop, replacing the round-by-round cold-start retraining with an incremental warm-start approach. The CL-specific orchestration scripts are the contributions of this thesis work.
 
 ## Background
 
