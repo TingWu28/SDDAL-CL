@@ -43,6 +43,10 @@ Phase retrieval in SLM machines requires recovering the wavefront phase from int
 │   └── (same structure as training_curve_sddal)
 │
 ├── initial_sets/                                  # Fixed initial datasets for reproducible cold start
+├── time/                                          # Timing CSVs, one per method (manually populated)
+│   ├── sddal.csv                                  # timing_log.csv from a representative SDDAL run
+│   ├── sddal_cl_replay.csv                        # timing_log.csv from a representative SDDAL-CL (replay) run
+│   └── sddal_cl.csv                              # (planned) timing_log.csv from full SDDAL-CL
 ├── statistics.py                                  # Plots MAE/SSIM/FRCM learning curves + p-values
 └── statistics_time.py                             # Plots training time comparison
 ```
@@ -183,7 +187,11 @@ bash TrainSet_curve_sddal.sh rec 0.0002 <path_to_collected_data> <seed>
 | Script               | Purpose                                                                                                                                         |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `statistics.py`      | Learning curves (MAE / SSIM / FRCM vs dataset size) for SDDAL and SDDAL-CL; mean ± std across seeds; Welch's t-test p-values between strategies |
-| `statistics_time.py` | Cumulative and per-round training time comparison between SDDAL and SDDAL-CL                                                                    |
+| `statistics_time.py` | Training time comparison between methods. Reads one `timing_log.csv` per method from the `time/` folder. Produces two plots: (1) cumulative trainer time with the final value annotated in hours; (2) per-round trainer time with a horizontal dashed line and annotation for the mean across all rounds (in seconds). |
+
+### Timing analysis
+
+Training time is determined by dataset size and method, not by the random seed, so a single representative run per method is sufficient. To add a method to the timing plots, copy its `timing_log.csv` into the `time/` folder under the corresponding filename defined in `STRATEGIES` at the top of `statistics_time.py`, then run the script. Commenting out a line in `STRATEGIES` removes that method from all plots.
 
 ## Reproducibility
 
